@@ -261,9 +261,10 @@ start_lucky(){
 case $1 in
 start)
 	if [ "${lucky_enable}" == "1" ]; then
-		logger "[软件中心-开机自启]: 100秒后Lucky自启动开启！"
-		sleep 100
+		logger "[软件中心-开机自启]: 60秒后Lucky开始启动！"
+		sleep 60
 		start_lucky
+		logger "[软件中心-开机自启]: Lucky启动完成！"
 	else
 		logger "[软件中心-开机自启]: Lucky未开启，不自动启动！"
 	fi
