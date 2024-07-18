@@ -36,5 +36,5 @@ service restart_httpd
 local aicloud_enable=$(nvram get aicloud_enable)
 if [ "${aicloud_enable}" == "1" ];then
 	service restart_webdav
-fi`
+fi
 ```
