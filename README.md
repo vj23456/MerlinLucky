@@ -3,8 +3,8 @@
 ## 是什么？
 `运行于ARM KoolCenter软件中心的，一款由Golang写的集合了 端口转发 / DDNS / Web服务 / Stun内网穿透 / 网络唤醒 / 计划任务 / ACME自动证书 / 网络存储 等功能的强大网络工具。`
 
-## 项目地址
-https://github.com/vj23456/MerlinLucky
+## 二进制项目地址
+https://github.com/gdy666/lucky
 
 ---
 
