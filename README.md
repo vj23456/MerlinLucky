@@ -15,14 +15,18 @@ https://github.com/gdy666/lucky
 ---
 ## 使用技巧
 
-1.使用Lucky自签SSL证书并注入路由器
+#### 1.使用Lucky自签SSL证书并注入路由器
+
 ![image](https://github.com/user-attachments/assets/9b1a992d-418a-4b6d-a8dd-46433886062d)
 ![image](https://github.com/user-attachments/assets/feb70855-7fc8-4f2a-a939-58eba3a5637d)
 
 备注：`CF`
+
 映射路径：`/koolshare/configs/lucky/ca`
+
 触发脚本：
-`cp /koolshare/configs/lucky/ca/CF.crt /tmp/etc/cert.crt
+```
+cp /koolshare/configs/lucky/ca/CF.crt /tmp/etc/cert.crt
 cp /koolshare/configs/lucky/ca/CF.crt /tmp/etc/cert.pem
 cp /koolshare/configs/lucky/ca/CF.key /tmp/etc/key.pem
 cat /tmp/etc/key.pem /tmp/etc/cert.pem > /tmp/etc/server.pem
@@ -33,3 +37,4 @@ local aicloud_enable=$(nvram get aicloud_enable)
 if [ "${aicloud_enable}" == "1" ];then
 	service restart_webdav
 fi`
+```
