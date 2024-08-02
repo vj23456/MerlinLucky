@@ -1,5 +1,8 @@
 KoolCenter Lucky Changelog
 ===========================================
+1.2
+   - fix        ddnsto访问时，访问后台按钮未加safeurl参数
+
 1.1
    - fix        调整开机启动优先级
    - remove     移除60秒延迟启动

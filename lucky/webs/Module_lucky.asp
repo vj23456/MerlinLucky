@@ -178,7 +178,7 @@ function pannel_access(){
 				hostname = hostname.replace('.tocmcc.cn','-lucky.tocmcc.cn');
 			}
 
-			webUiHref = protocol + "//" + hostname;
+			webUiHref = protocol + "//" + hostname + dbus["lucky_safeurl"];
 		}else{
 			webUiHref = protocol + "//" + hostname + ":" + dbus["lucky_port"] + dbus["lucky_safeurl"];
 		}
