@@ -1,5 +1,8 @@
 KoolCenter Lucky Changelog
 ===========================================
+1.3
+   - fix        增加Nat重启机制，解决防火墙重启时丢iptables的问题
+
 1.2
    - fix        ddnsto访问时，访问后台按钮未加safeurl参数
 

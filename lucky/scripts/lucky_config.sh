@@ -272,6 +272,12 @@ boot_up)
 		start_lucky
 	fi
 	;;
+start_nat)
+	if [ "${lucky_enable}" == "1" ]; then
+	    logger "[软件中心]-[${0##*/}]: NAT重启触发重新启动Lucky！"
+		lucky -cd /koolshare/configs/lucky -rRestart
+	fi
+	;;	
 stop)
 	close_lucky
 	;;

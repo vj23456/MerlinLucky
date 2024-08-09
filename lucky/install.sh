@@ -135,7 +135,8 @@ install_now() {
 	cp -rf /tmp/${module}/uninstall.sh /koolshare/scripts/uninstall_${module}.sh
 	
 	#创建开机自启任务
-	[ ! -L "/koolshare/init.d/S99lucky.sh" ] && ln -sf /koolshare/scripts/lucky_config.sh /koolshare/init.d/S110lucky.sh
+	[ ! -L "/koolshare/init.d/S110lucky.sh" ] && ln -sf /koolshare/scripts/lucky_config.sh /koolshare/init.d/S110lucky.sh
+	[ ! -L "/koolshare/init.d/N110lucky.sh" ] && ln -sf /koolshare/scripts/lucky_config.sh /koolshare/init.d/N110lucky.sh
 
 	# Permissions
 	chmod +x /koolshare/scripts/lucky* >/dev/null 2>&1
