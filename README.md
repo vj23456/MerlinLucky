@@ -15,7 +15,7 @@ https://github.com/gdy666/lucky
 ---
 ## 使用技巧
 
-#### 1.使用Lucky自签SSL证书并注入路由器
+#### 1.使用Lucky自签SSL证书并注入路由器 (固件版本388.4之后，该方法失效)
 
 ![image](https://github.com/user-attachments/assets/9b1a992d-418a-4b6d-a8dd-46433886062d)
 ![image](https://github.com/user-attachments/assets/feb70855-7fc8-4f2a-a939-58eba3a5637d)
