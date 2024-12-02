@@ -120,7 +120,7 @@ start_lucky_process(){
 			#!/bin/sh
 			/koolshare/scripts/base.sh
 			if test \${1} = 'start' ; then
-				exec lucky -c /koolshare/configs/lucky/
+				exec lucky -cd /koolshare/configs/lucky/
 			fi
 			exit 0
 
