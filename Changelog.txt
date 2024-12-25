@@ -1,6 +1,9 @@
 KoolCenter Lucky Changelog
 ===========================================
 1.3.7
+   - fix     	fix web load error on newer 102 fw(37xxx)
+   
+1.3.7
    - update     更新内核版本至v2.14.0
 
 1.3.6
