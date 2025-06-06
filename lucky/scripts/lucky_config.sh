@@ -269,7 +269,7 @@ start)
 	;;
 boot_up)
 	if [ "${lucky_enable}" == "1" ]; then
-		start_lucky
+		start_lucky | tee -a ${LOG_FILE}
 	fi
 	;;
 start_nat)
