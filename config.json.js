@@ -7,5 +7,5 @@
     "module": "lucky", 
     "tags": "工具", 
     "title": "Lucky", 
-    "version": "1.5.4"
+    "version": "1.5.5"
 }
