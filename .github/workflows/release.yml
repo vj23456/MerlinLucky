@@ -24,14 +24,11 @@ jobs:
     - name: Get version from tag
       id: get_version
       run: |
-        # 从标签提取版本号（去除 'v' 前缀）
         TAG_NAME="${{ github.ref_name }}"
         VERSION="${TAG_NAME#v}"
         
-        # 验证版本号
         if [[ ! $VERSION =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
           echo "❌ 错误：无效的版本号格式 '$VERSION'"
-          echo "请使用类似 v1.5.9 的格式"
           exit 1
         fi
         
@@ -42,252 +39,143 @@ jobs:
     - name: Validate project structure
       run: |
         echo "🔍 验证项目结构..."
-        
-        # 检查必要文件
-        REQUIRED_FILES=("config.json.js" "Changelog.txt")
-        REQUIRED_DIRS=("lucky")
-        
-        for file in "${REQUIRED_FILES[@]}"; do
-          if [ ! -f "$file" ]; then
-            echo "❌ 错误：$file 文件不存在"
-            exit 1
-          fi
-        done
-        
-        for dir in "${REQUIRED_DIRS[@]}"; do
-          if [ ! -d "$dir" ]; then
-            echo "❌ 错误：$dir 目录不存在"
-            exit 1
-          fi
-        done
-        
-        echo "✅ 项目结构验证通过"
-        echo "📁 lucky 目录文件数量:"
-        find lucky -type f | wc -l
+        if [ ! -f "config.json.js" ]; then echo "❌ config.json.js 不存在"; exit 1; fi
+        if [ ! -d "lucky" ]; then echo "❌ lucky 目录不存在"; exit 1; fi
+        echo "✅ 验证通过"
     
     - name: Extract changelog for version
       id: extract_changelog
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
-        echo "📝 从 Changelog.txt 提取版本 $VERSION 的更新内容..."
-        
-        # 检查 Changelog.txt 文件
         if [ ! -f "Changelog.txt" ]; then
-          echo "❌ 错误：Changelog.txt 文件不存在"
-          exit 1
-        fi
-        
-        # 提取指定版本的内容
-        # 使用 awk 提取从指定版本号开始到下一个版本号或文件结束的内容
-        CHANGELOG_CONTENT=$(awk -v version="$VERSION" '
-        BEGIN { found=0; capture=0 }
-        /^[0-9]+\.[0-9]+\.[0-9]+$/ {
-          if ($0 == version) {
-            found=1
-            capture=1
-            next
-          }
-          if (capture && /^[0-9]+\.[0-9]+\.[0-9]+$/) {
-            capture=0
-          }
-        }
-        capture && found {
-          print $0
-        }
-        ' Changelog.txt)
-        
-        # 去除首尾空白行
-        CHANGELOG_CONTENT=$(echo "$CHANGELOG_CONTENT" | sed '/^[[:space:]]*$/d' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        
-        if [ -n "$CHANGELOG_CONTENT" ]; then
-          echo "✅ 找到版本 $VERSION 的更新内容:"
-          echo "----------------------------------------"
-          echo "$CHANGELOG_CONTENT"
-          echo "----------------------------------------"
-          
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        else
-          echo "⚠️  警告：未找到版本 $VERSION 的更新内容"
           echo "changelog=" >> $GITHUB_OUTPUT
+          exit 0
         fi
+        CHANGELOG_CONTENT=$(awk -v ver="$VERSION" '
+          /^[0-9]+\.[0-9]+\.[0-9]+$/ {if ($0==ver) {found=1; next}} 
+          found && /^[0-9]+\.[0-9]+\.[0-9]+$/ {found=0} 
+          found {print}
+        ' Changelog.txt)
+        CHANGELOG_CONTENT=$(echo "$CHANGELOG_CONTENT" | sed '/^[[:space:]]*$/d')
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
     
-    - name: Update version in files and commit
-      id: update_files
+    # 第一步：更新 config.json.js 中的 version 字段（暂不提交）
+    - name: Update version in config.json.js
+      id: update_version
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
-        
-        echo "🔄 更新文件版本号并提交..."
-        
-        # 备份原始文件（可选）
-        cp config.json.js config.json.js.backup
-        if [ -f "lucky/version" ]; then
-          cp lucky/version lucky/version.backup
-        fi
-        
-        # 1. 更新 config.json.js
-        echo "更新 config.json.js..."
-        if grep -q '"version":' config.json.js; then
-          # 使用精确匹配更新
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" config.json.js
-          echo "✅ config.json.js 更新完成"
-          
-          # 验证更新
-          NEW_VERSION=$(grep -o '"version": "[^"]*"' config.json.js | cut -d'"' -f4)
-          if [ "$NEW_VERSION" = "$VERSION" ]; then
-            echo "✅ 验证通过: $NEW_VERSION"
-          else
-            echo "❌ 验证失败，期望: $VERSION, 实际: $NEW_VERSION"
-            echo "文件内容:"
-            grep '"version"' config.json.js
-            exit 1
-          fi
-        else
-          echo "❌ config.json.js 中没有找到 version 字段"
+        echo "🔄 更新 config.json.js 中的 version 字段为 $VERSION"
+        sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" config.json.js
+        # 验证更新
+        NEW_VER=$(grep -o '"version": "[^"]*"' config.json.js | cut -d'"' -f4)
+        if [ "$NEW_VER" != "$VERSION" ]; then
+          echo "❌ 版本更新失败"
           exit 1
         fi
-        
-        # 2. 更新 lucky/version 文件
-        echo "更新 lucky/version..."
+        echo "✅ version 已更新"
+    
+    # 第二步：更新 lucky/version 文件（暂不提交）
+    - name: Update lucky/version file
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
         mkdir -p lucky
         echo "$VERSION" > lucky/version
-        echo "✅ lucky/version 更新完成"
-        echo "📄 lucky/version 内容:"
-        cat lucky/version
-        
-        # 3. 显示修改的差异
-        echo "📋 修改的差异:"
-        echo "config.json.js 修改:"
-        diff -u config.json.js.backup config.json.js || true
-        
-        echo "lucky/version 修改:"
-        if [ -f "lucky/version.backup" ]; then
-          diff -u lucky/version.backup lucky/version || true
-        else
-          echo "新创建的文件"
-        fi
-        
-        # 4. 提交更改到仓库
-        echo "📤 提交更改到 Git..."
-        
-        # 配置 Git 用户
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-        
-        # 添加修改的文件
-        git add config.json.js
-        git add lucky/version
-        
-        # 检查是否有修改
-        if git diff --cached --quiet; then
-          echo "⚠️ 没有文件需要提交"
-          echo "has_changes=false" >> $GITHUB_OUTPUT
-        else
-          echo "✅ 检测到文件修改"
-          
-          # 创建提交
-          COMMIT_MESSAGE="chore: update version to $VERSION"
-          git commit -m "$COMMIT_MESSAGE"
-          
-          # 推送更改到当前分支
-          # 注意：标签对应的提交可能不在默认分支上，我们需要推送到正确的分支
-          # 获取当前分支
-          CURRENT_BRANCH=$(git branch --show-current)
-          
-          if [ -z "$CURRENT_BRANCH" ]; then
-            # 如果在 detached HEAD 状态（标签状态），需要找到对应的分支
-            echo "当前在标签对应的提交上，尝试推送到 main 分支"
-            # 创建一个临时分支用于推送
-            git checkout -b temp-version-update-$VERSION
-            git push origin temp-version-update-$VERSION:main
-          else
-            echo "推送更改到 $CURRENT_BRANCH 分支"
-            git push origin HEAD:$CURRENT_BRANCH
-          fi
-          
-          echo "has_changes=true" >> $GITHUB_OUTPUT
-          echo "commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
-        fi
+        echo "✅ lucky/version 已更新为 $VERSION"
     
+    # 第三步：创建 tar.gz 压缩包
     - name: Create tar.gz archive
       id: create_archive
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
         ARCHIVE_NAME="${PACKAGE_PREFIX}_v${VERSION}.tar.gz"
+        tar --exclude='.git*' --exclude='.github' --exclude='*.tar.gz' \
+            --exclude='*.backup' -czf "$ARCHIVE_NAME" lucky/
         
-        echo "📦 创建压缩包: $ARCHIVE_NAME"
+        # 计算 MD5 值（Linux md5sum 命令输出格式：md5sum filename）
+        MD5=$(md5sum "$ARCHIVE_NAME" | cut -d' ' -f1)
         
-        # 创建压缩包
-        tar --exclude='.git*' \
-            --exclude='.github' \
-            --exclude='*.tar.gz' \
-            --exclude='*.zip' \
-            --exclude='*.backup' \
-            -czf "$ARCHIVE_NAME" lucky/
+        echo "✅ 压缩包创建成功: $ARCHIVE_NAME"
+        echo "📊 MD5: $MD5"
+        echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+        echo "file_count=$(tar -tzf "$ARCHIVE_NAME" | wc -l)" >> $GITHUB_OUTPUT
+        echo "md5=$MD5" >> $GITHUB_OUTPUT
+    
+    # 第四步：更新 config.json.js 中的 md5 字段
+    - name: Update md5 in config.json.js
+      id: update_md5
+      run: |
+        MD5="${{ steps.create_archive.outputs.md5 }}"
+        echo "🔄 更新 config.json.js 中的 md5 字段为 $MD5"
         
-        # 验证压缩包
-        if [ ! -f "$ARCHIVE_NAME" ]; then
-          echo "❌ 压缩包创建失败"
-          exit 1
+        # 检查 config.json.js 中是否存在 md5 字段，如果不存在则添加
+        if grep -q '"md5":' config.json.js; then
+          sed -i.bak "s/\"md5\": \".*\"/\"md5\": \"$MD5\"/" config.json.js
+        else
+          # 在 version 行后添加 md5 行（简单处理，按需调整）
+          sed -i.bak "/\"version\":/a\  \"md5\": \"$MD5\"," config.json.js
         fi
         
-        # 显示压缩包信息
-        ARCHIVE_SIZE=$(du -h "$ARCHIVE_NAME" | cut -f1)
-        FILE_COUNT=$(tar -tzf "$ARCHIVE_NAME" | wc -l)
-        SHA256_SUM=$(sha256sum "$ARCHIVE_NAME" | cut -d' ' -f1)
-        
-        echo "✅ 压缩包创建成功"
-        echo "📊 压缩包详情:"
-        echo "  名称: $ARCHIVE_NAME"
-        echo "  大小: $ARCHIVE_SIZE"
-        echo "  文件数: $FILE_COUNT"
-        echo "  SHA256: $SHA256_SUM"
-        
-        # 保存输出供后续步骤使用
-        echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
-        echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-        echo "sha256_sum=$SHA256_SUM" >> $GITHUB_OUTPUT
+        # 验证更新
+        NEW_MD5=$(grep -o '"md5": "[^"]*"' config.json.js | cut -d'"' -f4)
+        if [ "$NEW_MD5" != "$MD5" ]; then
+          echo "❌ MD5 更新失败"
+          exit 1
+        fi
+        echo "✅ md5 已更新为 $MD5"
     
+    # 第五步：提交所有更改到仓库
+    - name: Commit version and md5 updates
+      id: commit_updates
+      run: |
+        # 配置 git
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        
+        # 添加修改的文件
+        git add config.json.js lucky/version
+        
+        if git diff --cached --quiet; then
+          echo "⚠️ 没有需要提交的更改"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        else
+          echo "✅ 检测到以下更改："
+          git status --porcelain
+          COMMIT_MSG="chore: update version to ${{ steps.get_version.outputs.version }} and md5"
+          git commit -m "$COMMIT_MSG"
+          
+          # 推送到当前分支
+          CURRENT_BRANCH=$(git branch --show-current)
+          if [ -z "$CURRENT_BRANCH" ]; then
+            # detached HEAD 状态，推送到 main 分支
+            git push origin HEAD:main
+          else
+            git push origin HEAD:"$CURRENT_BRANCH"
+          fi
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+        fi
+    
+    # 第六步：创建 GitHub Release
     - name: Create GitHub Release
-      id: create_release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.get_version.outputs.tag_name }}
         name: MerlinLucky v${{ steps.get_version.outputs.version }}
-        draft: false
-        prerelease: false
-        generate_release_notes: false
-        body: |                    
+        body: |
           ### 📝 更新内容
           ${{ steps.extract_changelog.outputs.changelog }}
           
-          ### 📋 版本历史
           查看完整更新日志：**[Changelog.txt](https://github.com/${{ github.repository }}/blob/main/Changelog.txt)**
-                
-          ---
-          *本发布由 GitHub Actions 自动生成*
         files: |
           ${{ steps.create_archive.outputs.archive_name }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Post-release cleanup
+    - name: Cleanup
       if: always()
-      run: |
-        echo "🧹 清理临时文件..."
-        rm -f config.json.js.backup
-        rm -f lucky/version.backup 2>/dev/null || true
-        echo "✅ 清理完成"
+      run: rm -f config.json.js.bak lucky/version.backup 2>/dev/null || true
     
-    - name: Success notification
+    - name: Success
       if: success()
-      run: |
-        echo "🎉 发布流程完成！"
-        echo "========================================"
-        echo "版本: v${{ steps.get_version.outputs.version }}"
-        echo "压缩包: ${{ steps.create_archive.outputs.archive_name }}"
-        echo "更新内容:"
-        echo "${{ steps.extract_changelog.outputs.changelog }}"
-        echo "发布页面: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.tag_name }}"
-        echo "========================================"
+      run: echo "🎉 发布成功！"
