@@ -6,7 +6,7 @@ on:
       - 'v*.*'  # 匹配 v 开头的版本标签
 
 env:
-  PACKAGE_PREFIX: "merlinlucky"
+  PACKAGE_PREFIX: "MerlinLucky"
 
 jobs:
   release:
@@ -19,6 +19,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Get version from tag
       id: get_version
@@ -95,15 +96,6 @@ jobs:
         }
         ' Changelog.txt)
         
-        # 另一种方法：使用 sed 提取
-        # 从版本号行开始，到下一个版本号行或文件结束
-        CHANGELOG_CONTENT_ALT=$(sed -n "/^$VERSION$/,/^[0-9]+\.[0-9]+\.[0-9]+$/p" Changelog.txt | sed '$d' | sed '1d')
-        
-        # 如果第一种方法没找到内容，尝试第二种方法
-        if [ -z "$CHANGELOG_CONTENT" ] && [ -n "$CHANGELOG_CONTENT_ALT" ]; then
-          CHANGELOG_CONTENT="$CHANGELOG_CONTENT_ALT"
-        fi
-        
         # 去除首尾空白行
         CHANGELOG_CONTENT=$(echo "$CHANGELOG_CONTENT" | sed '/^[[:space:]]*$/d' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
         
@@ -113,9 +105,6 @@ jobs:
           echo "$CHANGELOG_CONTENT"
           echo "----------------------------------------"
           
-          # 将内容转换为 JSON 格式以便在 GitHub Actions 中使用
-          CHANGELOG_JSON=$(echo "$CHANGELOG_CONTENT" | jq -R -s -c . 2>/dev/null || echo "$CHANGELOG_CONTENT")
-          
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -123,22 +112,25 @@ jobs:
           echo "⚠️  警告：未找到版本 $VERSION 的更新内容"
           echo "changelog=" >> $GITHUB_OUTPUT
         fi
-        
-        # 显示 Changelog.txt 的格式示例
-        echo ""
-        echo "📋 Changelog.txt 文件格式示例:"
-        head -20 Changelog.txt
     
-    - name: Update version in files
+    - name: Update version in files and commit
+      id: update_files
       run: |
         VERSION="${{ steps.get_version.outputs.version }}"
         
-        echo "🔄 更新文件版本号..."
+        echo "🔄 更新文件版本号并提交..."
+        
+        # 备份原始文件（可选）
+        cp config.json.js config.json.js.backup
+        if [ -f "lucky/version" ]; then
+          cp lucky/version lucky/version.backup
+        fi
         
         # 1. 更新 config.json.js
         echo "更新 config.json.js..."
         if grep -q '"version":' config.json.js; then
-          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" config.json.js
+          # 使用精确匹配更新
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" config.json.js
           echo "✅ config.json.js 更新完成"
           
           # 验证更新
@@ -147,6 +139,8 @@ jobs:
             echo "✅ 验证通过: $NEW_VERSION"
           else
             echo "❌ 验证失败，期望: $VERSION, 实际: $NEW_VERSION"
+            echo "文件内容:"
+            grep '"version"' config.json.js
             exit 1
           fi
         else
@@ -161,6 +155,60 @@ jobs:
         echo "✅ lucky/version 更新完成"
         echo "📄 lucky/version 内容:"
         cat lucky/version
+        
+        # 3. 显示修改的差异
+        echo "📋 修改的差异:"
+        echo "config.json.js 修改:"
+        diff -u config.json.js.backup config.json.js || true
+        
+        echo "lucky/version 修改:"
+        if [ -f "lucky/version.backup" ]; then
+          diff -u lucky/version.backup lucky/version || true
+        else
+          echo "新创建的文件"
+        fi
+        
+        # 4. 提交更改到仓库
+        echo "📤 提交更改到 Git..."
+        
+        # 配置 Git 用户
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        
+        # 添加修改的文件
+        git add config.json.js
+        git add lucky/version
+        
+        # 检查是否有修改
+        if git diff --cached --quiet; then
+          echo "⚠️ 没有文件需要提交"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        else
+          echo "✅ 检测到文件修改"
+          
+          # 创建提交
+          COMMIT_MESSAGE="chore: update version to $VERSION"
+          git commit -m "$COMMIT_MESSAGE"
+          
+          # 推送更改到当前分支
+          # 注意：标签对应的提交可能不在默认分支上，我们需要推送到正确的分支
+          # 获取当前分支
+          CURRENT_BRANCH=$(git branch --show-current)
+          
+          if [ -z "$CURRENT_BRANCH" ]; then
+            # 如果在 detached HEAD 状态（标签状态），需要找到对应的分支
+            echo "当前在标签对应的提交上，尝试推送到 main 分支"
+            # 创建一个临时分支用于推送
+            git checkout -b temp-version-update-$VERSION
+            git push origin temp-version-update-$VERSION:main
+          else
+            echo "推送更改到 $CURRENT_BRANCH 分支"
+            git push origin HEAD:$CURRENT_BRANCH
+          fi
+          
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+        fi
     
     - name: Create tar.gz archive
       id: create_archive
@@ -170,18 +218,12 @@ jobs:
         
         echo "📦 创建压缩包: $ARCHIVE_NAME"
         
-        # 列出将要打包的文件
-        echo "📁 打包文件列表 (前20个):"
-        find lucky -type f | sort | head -20
-        
         # 创建压缩包
         tar --exclude='.git*' \
             --exclude='.github' \
             --exclude='*.tar.gz' \
             --exclude='*.zip' \
             --exclude='*.backup' \
-            --exclude='test*' \
-            --exclude='*test*' \
             -czf "$ARCHIVE_NAME" lucky/
         
         # 验证压缩包
@@ -212,20 +254,18 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.get_version.outputs.tag_name }}
-        name: merlinlucky v${{ steps.get_version.outputs.version }}
+        name: MerlinClash v${{ steps.get_version.outputs.version }}
         draft: false
         prerelease: false
-        generate_release_notes: false  # 禁用自动生成，使用自定义内容
-        
-        # 动态生成 release body
-        body: |
-          ## 🚀 MerlinLucky v${{ steps.get_version.outputs.version }}
-          
+        generate_release_notes: false
+        body: |                    
           ### 📝 更新内容
           ${{ steps.extract_changelog.outputs.changelog }}
           
           ### 📋 版本历史
           查看完整更新日志：**[Changelog.txt](https://github.com/${{ github.repository }}/blob/main/Changelog.txt)**
+          
+          ${{ steps.update_files.outputs.has_changes == 'true' && '### 🔄 仓库更新\n- 版本号文件已更新并提交到仓库' || '' }}
           
           ---
           *本发布由 GitHub Actions 自动生成*
@@ -238,8 +278,7 @@ jobs:
       if: always()
       run: |
         echo "🧹 清理临时文件..."
-        # 清理备份文件
-        rm -f config.json.js.bak
+        rm -f config.json.js.backup
         rm -f lucky/version.backup 2>/dev/null || true
         echo "✅ 清理完成"
     
