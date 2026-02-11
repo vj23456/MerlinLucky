@@ -1,4 +1,4 @@
-name: MerlinClash Release
+name: MerlinLucky Release
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'v*.*'  # 匹配 v 开头的版本标签
 
 env:
-  PACKAGE_PREFIX: "merlinclash"
+  PACKAGE_PREFIX: "merlinlucky"
 
 jobs:
   release:
@@ -212,27 +212,17 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.get_version.outputs.tag_name }}
-        name: MerlinClash v${{ steps.get_version.outputs.version }}
+        name: merlinlucky v${{ steps.get_version.outputs.version }}
         draft: false
         prerelease: false
         generate_release_notes: false  # 禁用自动生成，使用自定义内容
         
         # 动态生成 release body
         body: |
-          ## 🚀 MerlinClash v${{ steps.get_version.outputs.version }}
-          
-          ### 📦 发行包
-          - **文件名**: ${{ steps.create_archive.outputs.archive_name }}
-          - **包含文件数**: ${{ steps.create_archive.outputs.file_count }}
-          - **SHA256**: `${{ steps.create_archive.outputs.sha256_sum }}`
+          ## 🚀 MerlinLucky v${{ steps.get_version.outputs.version }}
           
           ### 📝 更新内容
           ${{ steps.extract_changelog.outputs.changelog }}
-          
-          ### 🔧 使用方法
-          1. 下载 `${{ steps.create_archive.outputs.archive_name }}`
-          2. 解压文件：`tar -xzf ${{ steps.create_archive.outputs.archive_name }}`
-          3. 查看解压后的 lucky 目录
           
           ### 📋 版本历史
           查看完整更新日志：**[Changelog.txt](https://github.com/${{ github.repository }}/blob/main/Changelog.txt)**
