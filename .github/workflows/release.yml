@@ -254,7 +254,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.get_version.outputs.tag_name }}
-        name: MerlinClash v${{ steps.get_version.outputs.version }}
+        name: MerlinLucky v${{ steps.get_version.outputs.version }}
         draft: false
         prerelease: false
         generate_release_notes: false
@@ -264,9 +264,7 @@ jobs:
           
           ### 📋 版本历史
           查看完整更新日志：**[Changelog.txt](https://github.com/${{ github.repository }}/blob/main/Changelog.txt)**
-          
-          ${{ steps.update_files.outputs.has_changes == 'true' && '### 🔄 仓库更新\n- 版本号文件已更新并提交到仓库' || '' }}
-          
+                
           ---
           *本发布由 GitHub Actions 自动生成*
         files: |
