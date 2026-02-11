@@ -1,0 +1,266 @@
+name: MerlinClash Release
+
+on:
+  push:
+    tags:
+      - 'v*.*'  # 匹配 v 开头的版本标签
+
+env:
+  PACKAGE_PREFIX: "merlinclash"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Get version from tag
+      id: get_version
+      run: |
+        # 从标签提取版本号（去除 'v' 前缀）
+        TAG_NAME="${{ github.ref_name }}"
+        VERSION="${TAG_NAME#v}"
+        
+        # 验证版本号
+        if [[ ! $VERSION =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+          echo "❌ 错误：无效的版本号格式 '$VERSION'"
+          echo "请使用类似 v1.5.9 的格式"
+          exit 1
+        fi
+        
+        echo "✅ 版本号: $VERSION"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+    
+    - name: Validate project structure
+      run: |
+        echo "🔍 验证项目结构..."
+        
+        # 检查必要文件
+        REQUIRED_FILES=("config.json.js" "Changelog.txt")
+        REQUIRED_DIRS=("lucky")
+        
+        for file in "${REQUIRED_FILES[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "❌ 错误：$file 文件不存在"
+            exit 1
+          fi
+        done
+        
+        for dir in "${REQUIRED_DIRS[@]}"; do
+          if [ ! -d "$dir" ]; then
+            echo "❌ 错误：$dir 目录不存在"
+            exit 1
+          fi
+        done
+        
+        echo "✅ 项目结构验证通过"
+        echo "📁 lucky 目录文件数量:"
+        find lucky -type f | wc -l
+    
+    - name: Extract changelog for version
+      id: extract_changelog
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        echo "📝 从 Changelog.txt 提取版本 $VERSION 的更新内容..."
+        
+        # 检查 Changelog.txt 文件
+        if [ ! -f "Changelog.txt" ]; then
+          echo "❌ 错误：Changelog.txt 文件不存在"
+          exit 1
+        fi
+        
+        # 提取指定版本的内容
+        # 使用 awk 提取从指定版本号开始到下一个版本号或文件结束的内容
+        CHANGELOG_CONTENT=$(awk -v version="$VERSION" '
+        BEGIN { found=0; capture=0 }
+        /^[0-9]+\.[0-9]+\.[0-9]+$/ {
+          if ($0 == version) {
+            found=1
+            capture=1
+            next
+          }
+          if (capture && /^[0-9]+\.[0-9]+\.[0-9]+$/) {
+            capture=0
+          }
+        }
+        capture && found {
+          print $0
+        }
+        ' Changelog.txt)
+        
+        # 另一种方法：使用 sed 提取
+        # 从版本号行开始，到下一个版本号行或文件结束
+        CHANGELOG_CONTENT_ALT=$(sed -n "/^$VERSION$/,/^[0-9]+\.[0-9]+\.[0-9]+$/p" Changelog.txt | sed '$d' | sed '1d')
+        
+        # 如果第一种方法没找到内容，尝试第二种方法
+        if [ -z "$CHANGELOG_CONTENT" ] && [ -n "$CHANGELOG_CONTENT_ALT" ]; then
+          CHANGELOG_CONTENT="$CHANGELOG_CONTENT_ALT"
+        fi
+        
+        # 去除首尾空白行
+        CHANGELOG_CONTENT=$(echo "$CHANGELOG_CONTENT" | sed '/^[[:space:]]*$/d' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        
+        if [ -n "$CHANGELOG_CONTENT" ]; then
+          echo "✅ 找到版本 $VERSION 的更新内容:"
+          echo "----------------------------------------"
+          echo "$CHANGELOG_CONTENT"
+          echo "----------------------------------------"
+          
+          # 将内容转换为 JSON 格式以便在 GitHub Actions 中使用
+          CHANGELOG_JSON=$(echo "$CHANGELOG_CONTENT" | jq -R -s -c . 2>/dev/null || echo "$CHANGELOG_CONTENT")
+          
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️  警告：未找到版本 $VERSION 的更新内容"
+          echo "changelog=" >> $GITHUB_OUTPUT
+        fi
+        
+        # 显示 Changelog.txt 的格式示例
+        echo ""
+        echo "📋 Changelog.txt 文件格式示例:"
+        head -20 Changelog.txt
+    
+    - name: Update version in files
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        
+        echo "🔄 更新文件版本号..."
+        
+        # 1. 更新 config.json.js
+        echo "更新 config.json.js..."
+        if grep -q '"version":' config.json.js; then
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" config.json.js
+          echo "✅ config.json.js 更新完成"
+          
+          # 验证更新
+          NEW_VERSION=$(grep -o '"version": "[^"]*"' config.json.js | cut -d'"' -f4)
+          if [ "$NEW_VERSION" = "$VERSION" ]; then
+            echo "✅ 验证通过: $NEW_VERSION"
+          else
+            echo "❌ 验证失败，期望: $VERSION, 实际: $NEW_VERSION"
+            exit 1
+          fi
+        else
+          echo "❌ config.json.js 中没有找到 version 字段"
+          exit 1
+        fi
+        
+        # 2. 更新 lucky/version 文件
+        echo "更新 lucky/version..."
+        mkdir -p lucky
+        echo "$VERSION" > lucky/version
+        echo "✅ lucky/version 更新完成"
+        echo "📄 lucky/version 内容:"
+        cat lucky/version
+    
+    - name: Create tar.gz archive
+      id: create_archive
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        ARCHIVE_NAME="${PACKAGE_PREFIX}_v${VERSION}.tar.gz"
+        
+        echo "📦 创建压缩包: $ARCHIVE_NAME"
+        
+        # 列出将要打包的文件
+        echo "📁 打包文件列表 (前20个):"
+        find lucky -type f | sort | head -20
+        
+        # 创建压缩包
+        tar --exclude='.git*' \
+            --exclude='.github' \
+            --exclude='*.tar.gz' \
+            --exclude='*.zip' \
+            --exclude='*.backup' \
+            --exclude='test*' \
+            --exclude='*test*' \
+            -czf "$ARCHIVE_NAME" lucky/
+        
+        # 验证压缩包
+        if [ ! -f "$ARCHIVE_NAME" ]; then
+          echo "❌ 压缩包创建失败"
+          exit 1
+        fi
+        
+        # 显示压缩包信息
+        ARCHIVE_SIZE=$(du -h "$ARCHIVE_NAME" | cut -f1)
+        FILE_COUNT=$(tar -tzf "$ARCHIVE_NAME" | wc -l)
+        SHA256_SUM=$(sha256sum "$ARCHIVE_NAME" | cut -d' ' -f1)
+        
+        echo "✅ 压缩包创建成功"
+        echo "📊 压缩包详情:"
+        echo "  名称: $ARCHIVE_NAME"
+        echo "  大小: $ARCHIVE_SIZE"
+        echo "  文件数: $FILE_COUNT"
+        echo "  SHA256: $SHA256_SUM"
+        
+        # 保存输出供后续步骤使用
+        echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+        echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
+        echo "sha256_sum=$SHA256_SUM" >> $GITHUB_OUTPUT
+    
+    - name: Create GitHub Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_version.outputs.tag_name }}
+        name: MerlinClash v${{ steps.get_version.outputs.version }}
+        draft: false
+        prerelease: false
+        generate_release_notes: false  # 禁用自动生成，使用自定义内容
+        
+        # 动态生成 release body
+        body: |
+          ## 🚀 MerlinClash v${{ steps.get_version.outputs.version }}
+          
+          ### 📦 发行包
+          - **文件名**: ${{ steps.create_archive.outputs.archive_name }}
+          - **包含文件数**: ${{ steps.create_archive.outputs.file_count }}
+          - **SHA256**: `${{ steps.create_archive.outputs.sha256_sum }}`
+          
+          ### 📝 更新内容
+          ${{ steps.extract_changelog.outputs.changelog }}
+          
+          ### 🔧 使用方法
+          1. 下载 `${{ steps.create_archive.outputs.archive_name }}`
+          2. 解压文件：`tar -xzf ${{ steps.create_archive.outputs.archive_name }}`
+          3. 查看解压后的 lucky 目录
+          
+          ### 📋 版本历史
+          查看完整更新日志：**[Changelog.txt](https://github.com/${{ github.repository }}/blob/main/Changelog.txt)**
+          
+          ---
+          *本发布由 GitHub Actions 自动生成*
+        files: |
+          ${{ steps.create_archive.outputs.archive_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Post-release cleanup
+      if: always()
+      run: |
+        echo "🧹 清理临时文件..."
+        # 清理备份文件
+        rm -f config.json.js.bak
+        rm -f lucky/version.backup 2>/dev/null || true
+        echo "✅ 清理完成"
+    
+    - name: Success notification
+      if: success()
+      run: |
+        echo "🎉 发布流程完成！"
+        echo "========================================"
+        echo "版本: v${{ steps.get_version.outputs.version }}"
+        echo "压缩包: ${{ steps.create_archive.outputs.archive_name }}"
+        echo "更新内容:"
+        echo "${{ steps.extract_changelog.outputs.changelog }}"
+        echo "发布页面: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.tag_name }}"
+        echo "========================================"
